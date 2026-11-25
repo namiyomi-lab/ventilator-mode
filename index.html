@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人工呼吸器 モード選択トレーニング｜メーカーで名前が変わる</title>
+<style>
+  :root{
+    --ink:#1d2426;
+    --ink-sub:#4c585c;
+    --line:#c9d2d4;
+    --line-soft:#e4e9ea;
+    --bg:#eceeed;
+    --panel:#ffffff;
+    --accent:#0e6b6e;
+    --warn:#b3541e;
+    --bad:#a4262c;
+    --good:#1e7a46;
+    --wave-bg:#10181a;
+    --scene-bg:#dde5e8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;
+    background:var(--bg); color:var(--ink);
+    font-size:14px; line-height:1.55;
+  }
+  /* ---------- ヘッダー ---------- */
+  header{
+    display:flex; align-items:baseline; gap:20px; flex-wrap:wrap;
+    padding:12px 22px 10px; background:var(--panel); border-bottom:2px solid var(--ink);
+  }
+  header h1{font-size:19px; font-weight:700; letter-spacing:.03em;}
+  header .sub{font-size:12.5px; color:var(--ink-sub);}
+  header .caution{margin-left:auto; font-size:11.5px; color:var(--warn); border:1px solid var(--warn); padding:2px 9px;}
+  /* ---------- 操作ストリップ（メーカー・症例） ---------- */
+  .controls{
+    display:flex; align-items:flex-end; gap:26px; flex-wrap:wrap;
+    padding:10px 22px 0; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .ctl{min-width:0;}
+  .ctl-label{display:block; font-size:11px; font-weight:700; color:var(--ink-sub); letter-spacing:.08em; margin-bottom:2px;}
+  .ctl-label b{color:var(--ink); font-size:12px;}
+  #makerList{display:flex; gap:2px; overflow-x:auto; scrollbar-width:none;}
+  #makerList::-webkit-scrollbar{display:none;}
+  .maker{
+    font:inherit; background:none; border:none; cursor:pointer; color:var(--ink-sub);
+    padding:5px 10px 8px; text-align:left; white-space:nowrap;
+    border-bottom:3px solid transparent;
+  }
+  .maker .mname{display:block; font-size:14.5px; font-weight:600; color:var(--ink);}
+  .maker .mdev{display:block; font-size:10.5px;}
+  .maker:hover .mname{color:var(--accent);}
+  .maker.active{border-bottom-color:var(--accent);}
+  .maker.active .mname{color:var(--accent);}
+  #caseList{display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; max-width:560px;}
+  #caseList::-webkit-scrollbar{display:none;}
+  .case{
+    font:inherit; background:none; border:none; cursor:pointer; color:var(--ink-sub);
+    padding:5px 9px 8px; text-align:left; white-space:nowrap;
+    border-bottom:3px solid transparent;
+  }
+  .case .cno{display:block; font-size:10.5px; font-weight:700; color:var(--ink-sub);}
+  .case .ctitle{display:block; font-size:12.5px; font-weight:600; color:var(--ink);}
+  .case .cmeta{display:none;}
+  .case .unavail{display:none;}
+  .case:hover .ctitle{color:var(--accent);}
+  .case.active{border-bottom-color:var(--accent);}
+  .case.active .ctitle,.case.active .cno{color:var(--accent);}
+  .case.disabled{opacity:.4; cursor:not-allowed;}
+  .score{margin-left:auto; font-size:12px; color:var(--ink-sub); padding-bottom:9px; white-space:nowrap;}
+  .score b{color:var(--ink); font-size:15px; font-variant-numeric:tabular-nums;}
+  /* ---------- ステージ ---------- */
+  .stage-main{max-width:1240px; margin:0 auto; padding:14px 18px 30px;}
+  .scene-card{background:var(--panel); border:1px solid var(--line);}
+  .casebar{
+    display:flex; gap:16px; align-items:flex-start;
+    padding:12px 18px 10px; border-bottom:1px solid var(--line-soft);
+  }
+  .casebar .txt{flex:1 1 auto; min-width:0;}
+  .casebar .ct{font-size:17px; font-weight:700;}
+  .casebar .cs{font-size:12.5px; color:var(--ink-sub); margin-top:2px; max-width:78ch;}
+  .vitals{flex:0 0 auto; display:flex; gap:18px; align-items:flex-start; font-variant-numeric:tabular-nums;}
+  .vital{text-align:right;}
+  .vital .vl{font-size:10.5px; color:var(--ink-sub); display:block;}
+  .vital .vv{font-size:23px; font-weight:700; line-height:1.15;}
+  .vital .vv small{font-size:11px; font-weight:400; color:var(--ink-sub);}
+  #spo2.bad{color:var(--bad);} #spo2.warn{color:var(--warn);} #spo2.ok{color:var(--good);}
+  /* 場面：患者イラスト＋機器写真 */
+  .scene{display:flex; background:var(--scene-bg); position:relative;}
+  .patient-media{
+    flex:1 1 auto; min-width:0; position:relative; aspect-ratio:21/10; overflow:hidden;
+    background:#f4efe7;
+  }
+  .patient-media img.base{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 30%; display:block;
+    transition:opacity .35s ease;
+  }
+  .chest-patch{
+    position:absolute; inset:0; pointer-events:none; will-change:transform;
+    transform-origin:51% 97%;
+    /* 病衣のシルエット型マスク（assets/chest_mask.png）: 回路・頭部にはマスクが
+       かからないため、変形したコピー像が回路に重なって二重像になることがない。
+       フェザーはシルエットの内側だけに付けてある。 */
+    -webkit-mask-image:url("assets/chest_mask.png");
+            mask-image:url("assets/chest_mask.png");
+    -webkit-mask-size:100% 100%;
+            mask-size:100% 100%;
+    -webkit-mask-repeat:no-repeat;
+            mask-repeat:no-repeat;
+  }
+  .chest-patch img{width:100%; height:100%; object-fit:cover; object-position:50% 30%; display:block;}
+  .device-panel{
+    flex:0 0 288px; display:flex; flex-direction:column;
+    background:var(--panel); border-left:1px solid var(--line);
+  }
+  .device-photo{
+    flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center;
+    padding:14px 14px 6px; background:#fff;
+  }
+  .device-photo img{max-width:100%; max-height:330px; object-fit:contain; display:block;}
+  #deviceNoPhoto{
+    display:none; width:100%; padding:26px 10px; text-align:center;
+    color:var(--ink-sub); font-size:13px; border:1px dashed var(--line);
+  }
+  .device-meta{padding:8px 16px 14px; border-top:1px solid var(--line-soft);}
+  .device-meta .dm-name{font-size:15px; font-weight:700;}
+  .device-meta .dm-dev{font-size:11.5px; color:var(--ink-sub);}
+  .device-meta .dm-mode{font-size:12.5px; margin-top:7px; color:var(--ink-sub);}
+  .device-meta .dm-mode b{color:var(--accent); font-size:15px; margin-left:4px;}
+  .device-meta .dm-note{font-size:11px; color:var(--ink-sub); margin-top:5px;}
+  /* ---------- 波形 ---------- */
+  .wave-panel{background:var(--wave-bg); position:relative; padding:8px 12px 5px; margin-top:12px;}
+  .wave-panel .wlabel{position:absolute; left:14px; font-size:10.5px; color:#9fb4b8; letter-spacing:.05em; z-index:1;}
+  #wave{display:block; width:100%; height:118px;}
+  .wavebar{display:flex; align-items:center; gap:8px; padding:4px 2px 3px; color:#c8d4d6; font-size:11.5px;}
+  .wavebar .spd{margin-left:auto; display:flex; border:1px solid #44585c;}
+  .wavebar .spd button{background:none; border:none; color:#c8d4d6; font:inherit; font-size:11.5px; padding:2px 10px; cursor:pointer;}
+  .wavebar .spd button.on{background:#c8d4d6; color:#10181a; font-weight:700;}
+  /* ---------- モード選択と判定 ---------- */
+  .mode-feedback{display:flex; gap:0; margin-top:12px; background:var(--panel); border:1px solid var(--line);}
+  .modebar{flex:1 1 auto; min-width:0; padding:12px 18px 12px;}
+  .modebar .mlabel{font-size:12px; color:var(--ink-sub); margin-bottom:7px;}
+  .modebar .mlabel b{color:var(--ink); font-size:13.5px;}
+  #modeChips{display:flex; flex-wrap:wrap; gap:7px;}
+  .chip{
+    font:inherit; font-size:13.5px; font-weight:600; cursor:pointer;
+    background:var(--panel); color:var(--ink); border:1.5px solid var(--ink);
+    padding:5px 13px; border-radius:999px;
+  }
+  .chip:hover{background:#eef3f3;}
+  .chip.sel{background:var(--ink); color:#fff;}
+  .chip .cpt{display:block; font-size:10px; font-weight:400; color:var(--ink-sub);}
+  .chip.sel .cpt{color:#cfd8da;}
+  .maker-note{font-size:11.5px; color:var(--warn); padding-top:6px; max-width:62ch;}
+  .trial-note{display:block; font-size:11.5px; color:var(--ink-sub); padding-top:5px;}
+  .feedback{
+    flex:0 0 400px; border-left:1px solid var(--line-soft);
+    padding:12px 18px; display:flex; flex-direction:column;
+  }
+  .feedback .verdict{font-size:15px; font-weight:700;}
+  .feedback .verdict.good{color:var(--good);} .feedback .verdict.near{color:var(--warn);} .feedback .verdict.bad{color:var(--bad);}
+  .feedback .why{font-size:13px; margin-top:3px;}
+  .feedback .next{margin-top:auto; padding-top:8px;}
+  .feedback .next button{font:inherit; font-size:12.5px; background:none; border:1px solid var(--ink); padding:4px 14px; cursor:pointer;}
+  /* ---------- くわしく ---------- */
+  .deep{
+    margin-top:12px; background:var(--panel); border:1px solid var(--line);
+    padding:16px 20px 18px; display:grid; grid-template-columns:1fr 1fr; gap:6px 44px;
+  }
+  .deep h2{font-size:12.5px; color:var(--ink-sub); letter-spacing:.06em; margin-bottom:6px;}
+  .deep h3{font-size:13.5px; margin:14px 0 4px; border-top:1px solid var(--line-soft); padding-top:10px;}
+  .deep h3:first-child{border-top:none; margin-top:0; padding-top:0;}
+  .deep p{font-size:12.5px; margin-bottom:5px;}
+  .deep .small{font-size:11.5px; color:var(--ink-sub);}
+  table.corr{border-collapse:collapse; width:100%; font-size:11.5px; margin-top:4px;}
+  table.corr th, table.corr td{border-top:1px solid var(--line-soft); padding:4px 6px; text-align:left; vertical-align:top;}
+  table.corr th{color:var(--ink-sub); font-weight:600; white-space:nowrap;}
+  table.corr tr.hl td{background:#e7f0f0; font-weight:600;}
+  .deep .exception{background:#faf3ec; border-left:3px solid var(--warn); padding:7px 10px; font-size:12px; margin-top:4px;}
+  /* ---------- iPhone幅 ---------- */
+  @media (max-width:760px){
+    header{padding:7px 12px 5px; gap:8px;}
+    header h1{font-size:15px;}
+    header .sub{display:none;}
+    header .caution{margin-left:0; font-size:9.5px; line-height:1.35; padding:1px 6px;}
+    .controls{gap:9px; padding:5px 12px 0; position:relative;}
+    .ctl-label{margin-bottom:0; font-size:10px; letter-spacing:.04em;}
+    .maker{padding:2px 7px 5px;}
+    .maker .mname{font-size:13.5px;}
+    .maker .mdev{display:none;}
+    .case{padding:2px 7px 5px;}
+    .case .cno{display:inline; margin-right:5px;}
+    .case .ctitle{display:inline; font-size:11.5px;}
+    .score{position:absolute; right:12px; top:4px; margin:0; padding:0; font-size:11px;}
+    .stage-main{padding:6px 8px 20px;}
+    .casebar{padding:7px 12px 5px; gap:10px;}
+    .casebar .ct{font-size:13.5px;}
+    .casebar .cs{font-size:11px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+    .vitals{gap:10px;}
+    .vital .vl{font-size:9.5px;}
+    .vital .vv{font-size:16px;}
+    .device-panel{
+      position:absolute; right:8px; bottom:8px; width:158px; z-index:2;
+      flex:0 0 auto; border:1px solid var(--line); background:rgba(255,255,255,.97);
+    }
+    .device-photo{flex:0 0 auto; padding:6px 6px 2px;}
+    .device-photo img{max-height:62px;}
+    #deviceNoPhoto{padding:10px 6px; font-size:10.5px;}
+    .device-meta{border-top:none; padding:3px 9px 7px;}
+    .device-meta .dm-name{font-size:12.5px;}
+    .device-meta .dm-dev{display:none;}
+    .device-meta .dm-mode{margin-top:2px; font-size:11px;}
+    .device-meta .dm-mode b{font-size:12.5px;}
+    .device-meta .dm-note{display:none;}
+    .wave-panel{margin-top:6px; padding:6px 8px 3px;}
+    #wave{height:96px;}
+    .wavebar{padding:2px 2px 1px;}
+    .mode-feedback{flex-direction:column; margin-top:6px;}
+    .modebar{padding:9px 12px;}
+    .modebar .mlabel{font-size:11px; margin-bottom:5px;}
+    #modeChips{flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding-bottom:2px;}
+    #modeChips::-webkit-scrollbar{display:none;}
+    .chip{flex:0 0 auto; padding:3px 10px; font-size:12.5px;}
+    .chip .cpt{font-size:9px;}
+    .feedback{flex:0 0 auto; border-left:none; border-top:1px solid var(--line-soft); padding:9px 12px 11px;}
+    .feedback .verdict{font-size:14px;}
+    .feedback .why{font-size:11.5px; line-height:1.5;}
+    .deep{grid-template-columns:1fr; padding:13px 14px 15px; margin-top:8px;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>人工呼吸器 モード選択トレーニング</h1>
+  <span class="sub">メーカーを選ぶと、モードの名前がそのメーカーの表記に変わります。患者の状態に合うモードを選んでください。</span>
+  <span class="caution">学習用です。実際のモード・設定は医師の指示と添付文書に従ってください</span>
+  <span class="trial-note">体験版です。使えるメーカーはドレーゲルとゲティンゲ（SERVO）の2つ、症例は3つまでです。他のメーカー（ハミルトン／メドトロニック／日本光電／フィリップス／レスメド）と症例4〜8はフル版で使えます。</span>
+</header>
+
+<div class="controls">
+  <div class="ctl">
+    <span class="ctl-label"><b>1</b> メーカーを選ぶ</span>
+    <div id="makerList"></div>
+  </div>
+  <div class="ctl">
+    <span class="ctl-label"><b>2</b> 症例を選ぶ</span>
+    <div id="caseList"></div>
+  </div>
+  <div class="score">正解 <b id="scoreOk">0</b> ／ 挑戦 <b id="scoreTry">0</b> 件</div>
+</div>
+
+<main class="stage-main">
+  <section class="scene-card">
+    <div class="casebar">
+      <div class="txt">
+        <div class="ct" id="caseTitle"></div>
+        <div class="cs" id="caseStory"></div>
+      </div>
+      <div class="vitals">
+        <div class="vital"><span class="vl">SpO2</span><span class="vv" id="spo2">--<small> %</small></span></div>
+        <div class="vital"><span class="vl">呼吸数（実測）</span><span class="vv" id="rr">--<small> /分</small></span></div>
+        <div class="vital"><span class="vl">同調</span><span class="vv" id="sync" style="font-size:14px;">—</span></div>
+      </div>
+    </div>
+    <div class="scene">
+      <div class="patient-media" id="patientMedia">
+        <img class="base" id="patientImgEtt" src="assets/patient_ett_illust.jpg" alt="人工呼吸器につながれた患者（挿管・イラスト）">
+        <img class="base" id="patientImgMask" src="assets/patient_mask_illust.jpg" alt="マスク換気の患者（イラスト）" style="opacity:0;">
+        <div class="chest-patch" id="chestPatchEtt"><img src="assets/patient_ett_illust.jpg" alt=""></div>
+        <div class="chest-patch" id="chestPatchMask" style="display:none;"><img src="assets/patient_mask_illust.jpg" alt=""></div>
+      </div>
+      <aside class="device-panel">
+        <div class="device-photo">
+          <img id="deviceImg" src="assets/device_draeger.png" alt="選択中のメーカーの人工呼吸器（実機写真）">
+          <div id="deviceNoPhoto">実機写真なし</div>
+        </div>
+        <div class="device-meta">
+          <div class="dm-name" id="devMakerName"></div>
+          <div class="dm-dev" id="devDeviceName"></div>
+          <div class="dm-mode">選択中のモード<b id="devModeName">未選択</b></div>
+          <p class="dm-note" id="deviceNote"></p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="wave-panel">
+    <span class="wlabel" style="top:9px;">圧 Paw</span>
+    <span class="wlabel" style="top:67px;">フロー</span>
+    <canvas id="wave"></canvas>
+    <div class="wavebar">
+      <span id="waveState">モードを選ぶと波形が流れます</span>
+      <span class="spd" role="group" aria-label="再生速度">
+        <button data-speed="0.5">0.5倍</button><button data-speed="1" class="on">1倍</button><button data-speed="2">2倍</button>
+      </span>
+    </div>
+  </section>
+
+  <section class="mode-feedback">
+    <div class="modebar">
+      <div class="mlabel"><b>3</b> モードを選ぶ ― いまの機械：<b id="curMaker"></b>（<span id="curDevice"></span>）</div>
+      <div id="modeChips"></div>
+      <div class="maker-note" id="makerNote"></div>
+    </div>
+    <div class="feedback" id="feedback">
+      <div class="verdict" id="verdict">まず触る順番：メーカー → 症例 → モード</div>
+      <div class="why" id="why">モードを選ぶと、波形と患者の反応がその場で変わります。同じ症例のままメーカーを切り替えると、正解のモードの「名前」だけが各社の表記に変わります。</div>
+      <div class="next" id="nextWrap" style="display:none;"><button id="nextCase">次の症例へ</button></div>
+    </div>
+  </section>
+
+  <section class="deep">
+    <div class="deep-col">
+      <h2>くわしく（選んだモードの仕組み）</h2>
+      <div id="deepBody">
+        <p class="small">モードを選ぶと、そのモードが「何を決めて、何を患者に任せるか」と、メーカーごとの名前の対応がここに出ます。</p>
+      </div>
+      <h3>この症例の例外・注意</h3>
+      <div id="caseException"><p class="small">症例を選ぶと出ます。</p></div>
+    </div>
+    <div class="deep-col">
+      <h3>名前の対応表（考え方が同じもの）</h3>
+      <p class="small">メーカー公式資料で確認できた範囲だけを載せています。確認できなかったメーカーは空欄です。</p>
+      <div id="corrTable"></div>
+      <h3>根拠</h3>
+      <p class="small">モード名とメーカー対応は、各メーカー公式サイト・公式データシート・添付文書で確認した範囲に限っています（調査メモ: 2026-11-25）。モードの考え方は「誰が呼吸を決めるか」で整理しています。数値設定の推奨はこのアプリでは扱いません。患者のイラストは生成画像、機器の写真は各メーカー公式サイト・公式資料から取得した実機写真です。</p>
+    </div>
+  </section>
+</main>
+<script>
+"use strict";
+/* ================= データ =================
+   モード名・対応はメーカー公式資料で確認できた範囲のみ（research.md 2026-11-25）。
+   concept = 考え方の分類。波形と判定は concept 単位で決まる。 */
+const CONCEPT_INFO = {
+  vc:   {label:"量制御（強制）", mech:"1回の量を機械が保証して押し込む。フローは一定。肺が硬くなると圧が上がるので、見張るのは圧の変化。"},
+  pc:   {label:"圧制御（強制）", mech:"圧を一定に保って送る。フローは肺の状態で自然に減速する。肺が硬くなると入る量が減るので、見張るのは換気量の変化。"},
+  ac:   {label:"A/C（補助／調節）", mech:"きっかけは患者の吸気でもよいが、始まった呼吸の中身は設定どおりの強制換気。患者が多く吸おうとすれば、その全部に強制換気が入る。"},
+  dual: {label:"圧ベース＋量目標", mech:"圧制御を土台に、1回の量が目標に届くよう機械が圧を呼吸ごとに調整する。「圧で送りながら、量を見て機械が直す」形。何を設定して何を任せるかは機種で違う。"},
+  simv: {label:"SIMV（間欠的強制）", mech:"決めた回数だけ強制換気を入れ、その間は自発呼吸に任せる（自発にはPSを足すことが多い）。強制の回数を下げていく離脱への橋渡しに使われる。"},
+  ps:   {label:"CPAP＋PS（自発補助）", mech:"回数も量も患者しだい。機械は呼気の終わりに一定の圧を保ち、自発の吸気をPSで少し押す。自発呼吸の力が戻った段階や抜管前の試験で使う。"},
+  auto: {label:"自動調整", mech:"肺の状態と患者の努力に合わせて、呼吸回数・量・吸気時間を機械が呼吸ごとに調整する。看護師の仕事は「目標が患者に合っているか」を見る側に寄る。"},
+  autoplus:{label:"自動調整（PEEP・酸素まで）", mech:"自動調整に加えて、PEEPと酸素濃度も目標に合わせて機械が動かす。任せる範囲が最も広いタイプ。"},
+  proportional:{label:"比例補助", mech:"患者の呼吸の努力そのものを測り、努力に比例して補助を返す。頑張った分だけ機械が肩代わりするので、同調のずれが起きにくい。"},
+  aprv: {label:"2つの圧（APRV系）", mech:"高い圧を長く保ち、短く圧を抜く。その間も自発呼吸ができる。呼気で肺胞がつぶれるのを防ぎながら酸素化を狙う形。"},
+  niv_ps:{label:"NPPV 圧支持", mech:"マスク換気の圧支持。リークがある前提で、機械が漏れを補正しながらトリガーと補助を合わせる。"},
+  niv_auto:{label:"NPPV 自動調整", mech:"目標の換気量を決めておくと、圧支持を機械が自動で動かして量を保つ。マスク換気の「量を保つ」担当。"}
+};
+const MAKERS = {
+
+  draeger:{name:"ドレーゲル", device:"Evita V500／Savina 300", home:"icu", modes:[
+    {name:"VC-CMV", concept:"vc"},
+    {name:"VC-AC", concept:"ac"},
+    {name:"VC-SIMV", concept:"simv"},
+    {name:"PC-AC", concept:"pc"},
+    {name:"Volume Guarantee", concept:"dual"},
+    {name:"AutoFlow", concept:"dual"},
+    {name:"PC-APRV", concept:"aprv"},
+    {name:"PC-BIPAP", concept:"aprv"},
+    {name:"SPN-CPAP/PS", concept:"ps"}
+  ], note:""},
+
+  getinge:{name:"ゲティンゲ（SERVO）", device:"SERVO-u／SERVO-i", home:"icu", modes:[
+    {name:"VC", concept:"vc"},
+    {name:"PC", concept:"pc"},
+    {name:"PRVC", concept:"dual"},
+    {name:"SIMV", concept:"simv"},
+    {name:"PS／CPAP", concept:"ps"},
+    {name:"Bi-Vent／APRV", concept:"aprv"},
+    {name:"Automode", concept:"auto"},
+    {name:"NAVA", concept:"proportional"}
+  ], note:""}
+};
+/* 症例。accept=合っている考え方、near=惜しい考え方。
+   effort: 0=自発なし 1=弱い 2=強い・安定 */
+const CASES = [
+
+  {id:1, title:"自発呼吸がない（術後・深鎮静）", meta:"68歳 男性／開腹手術の直後",
+   story:"筋弛緩が残っていて、自発呼吸は出ていません。鎮静も深めです。呼吸は全部、機械に決めてもらう必要があります。",
+   iface:"ett", effort:0, spo2Start:93, spo2Good:97, spo2Bad:84,
+   accept:["vc","pc","ac","dual","auto","autoplus"], near:["simv"],
+   whyGood:"合っています。自発呼吸がないので、回数も1回の量（または圧）も機械が決める形が必要です。この状態では「患者に任せる」部分が残っているモードは使えません。",
+   whyNear:"強制換気は入ります。ただSIMVは「間は自発に任せる」設計なので、自発がゼロの今は回数の設定がそのまま命綱になります。自発が出てきたら評価が変わるモードです。",
+   wrongBy:{ps:"自発呼吸が前提のモードです。吸う力がない患者では、そもそも呼吸が始まらず換気量が入りません。",
+            proportional:"努力の信号に比例して補助するモードですが、この患者には信号そのものがありません。補助はゼロのままです。",
+            aprv:"自発呼吸を活かす設計です。活かす呼吸がない患者では、長い高圧がそのまま負担になります。",
+            niv_ps:"マスク換気用のモードです。この患者は挿管管理で、界面も考え方も合いません。",
+            niv_auto:"マスク換気用のモードです。この患者は挿管管理で、界面も考え方も合いません。"},
+   wrongDefault:"この患者の状態には合っていません。",
+   exception:"筋弛緩が切れて自発呼吸が戻り始めたら、同じ患者でも答えは変わります。「自発が出たか」を毎日見直すのが前提です。"},
+
+  {id:2, title:"ARDSで酸素化が悪い", meta:"59歳 女性／肺炎からARDS",
+   story:"酸素を上げてもSpO2は88%前後。呼気のたびに肺胞がつぶれているのが問題で、PEEPへの依存が高い状態です。",
+   iface:"ett", effort:1, spo2Start:88, spo2Good:94, spo2Bad:82,
+   accept:["aprv"], near:["autoplus","pc"],
+   whyGood:"合っています。高い圧を長く保って肺胞を開いたままにし、短い呼気で落とす形が、この「つぶれる肺胞」への答えです。自発呼吸もその上で乗せられます。",
+   whyNear:"惜しいところです。圧のコントロールやPEEPの自動調整は酸素化に届きますが、この症例の決め手は「呼気でつぶれる肺胞を開き続ける」ことです。圧の保ち方の設計が違う分、効果は一段落ちます。",
+   wrongBy:{vc:"量は保証できます。でも呼気で肺胞がつぶれる問題は残り、酸素化は伸びません。圧も上がりやすくなります。",
+            ps:"自発に任せる量では、この硬い肺は開けません。換気量が足りず酸素化も保てません。",
+            simv:"強制換気の合間に自発が入っても、肺胞をつぶれさせない仕組みにはなりません。",
+            niv_auto:"挿管中の重症ARDSにマスク換気の考え方は合いません。",
+            niv_ps:"挿管中の重症ARDSにマスク換気の考え方は合いません。"},
+   wrongDefault:"酸素化の決め手（肺胞を開き続けること）に届いていません。",
+   exception:"APRVは施設によって採用していないところもあります。その場合は圧制御＋PEEPの組み合わせで近づけるのが実際の現場の落としどころです。"},
+
+  {id:3, title:"自発呼吸が強く、機械とぶつかる", meta:"45歳 男性／頭部外傷のあと",
+   story:"自発呼吸はしっかりあります。ただ呼吸の欲求が強く、機械の送るタイミングと合わず、頻呼吸になって落ち着きません。",
+   iface:"ett", effort:2, spo2Start:94, spo2Good:97, spo2Bad:89,
+   whyGood:"合っています。この患者の努力そのものを測って、努力に比例して補助を返すので、タイミングのぶつかり合いが消えます。補助しすぎにもなりにくい形です。",
+   whyNear:"近い考え方です。患者の状態に合わせて機械が調整はしますが、努力の信号そのものを読んでいるわけではないので、ぶつかりが完全には消えません。",
+   accept:["proportional"], near:["auto","ps"],
+   wrongBy:{vc:"機械のリズムを押し付ける形なので、強い自発とは正面からぶつかります。ファイティングが強くなります。",
+            pc:"圧を一定に保っても、タイミングは機械主導です。ぶつかりは残ります。",
+            simv:"強制換気の分だけ、患者のリズムとずれる場面が出ます。",
+            dual:"圧は調整されても、呼吸の主導権は機械側です。同調の問題は解けません。",
+            aprv:"長い高圧の上で自発はできますが、この症例の課題は圧の形ではなくタイミングの同調です。"},
+   wrongDefault:"この症例の課題は「同調」です。選んだモードではそこが解けていません。",
+   exception:"ぶつかりの原因が痰やチューブ位置など「モード以前の問題」のこともあります。モードを変える前に回路と気道を確認するのが先です。"}
+];
+/* 対応表（公式資料で確認できた行だけ） */
+const CORR_ROWS = [
+  {concept:"dual", label:"圧ベース＋量目標", cells:{hamilton:"APV", draeger:"Volume Guarantee／AutoFlow", getinge:"PRVC", medtronic:"VC+", nihonkohden:"", philips:"", resmed:""}},
+  {concept:"auto", label:"自動調整", cells:{hamilton:"ASV", draeger:"", getinge:"Automode", medtronic:"", nihonkohden:"AVM", philips:"", resmed:""}},
+  {concept:"autoplus", label:"自動調整（PEEP・酸素まで）", cells:{hamilton:"INTELLiVENT-ASV", draeger:"", getinge:"", medtronic:"", nihonkohden:"", philips:"", resmed:""}},
+  {concept:"proportional", label:"比例補助", cells:{hamilton:"", draeger:"", getinge:"NAVA", medtronic:"PAV+", nihonkohden:"", philips:"", resmed:""}},
+  {concept:"aprv", label:"2つの圧", cells:{hamilton:"", draeger:"PC-APRV／PC-BIPAP", getinge:"Bi-Vent／APRV", medtronic:"BiLevel", nihonkohden:"", philips:"", resmed:""}},
+  {concept:"niv_auto", label:"NPPVで量を保つ", cells:{hamilton:"", draeger:"", getinge:"", medtronic:"", nihonkohden:"", philips:"AVAPS", resmed:"iVAPS"}},
+  {concept:"simv", label:"SIMVの表記", cells:{hamilton:"", draeger:"VC-SIMV／PC-SIMV", getinge:"SIMV", medtronic:"SIMV", nihonkohden:"", philips:"", resmed:""}}
+];
+</script>
+<script>
+/* ================= 波形エンジン =================
+   呼吸イベントを生成し、圧・フローをサンプリングする。 */
+const sim = {
+  t: 0, speed: 1, events: [], genT: 0, breathIdx: 0,
+  concept: "none", tier: null, vol: 0, spo2: 95,
+  samples: [], breathStarts: [], running: true
+};
+function evBase(kind, t0, Ti, T, peakP, peep){
+  return {kind, t0, Ti, T, peakP, peep: peep==null?5:peep, vol:1};
+}
+function genEvent(){
+  const c = CASES[state.caseIdx], cp = sim.concept, t0 = sim.genT, n = sim.breathIdx;
+  const bad = sim.tier === "bad", near = sim.tier === "near";
+  let e = null;
+  // 悪い選択のときの壊れ方
+  if (bad && c.effort === 0 && (cp === "ps" || cp === "proportional")) {
+    sim.genT += 3; sim.breathIdx++; return null; // 呼吸が始まらない
+  }
+  const volScale = bad ? (cp.startsWith("niv") && c.iface === "ett" ? 0.3 : 0.55) : (near ? 0.82 : 1);
+  switch(cp){
+    case "none": {
+      if (c.effort === 0){ sim.genT += 2; sim.breathIdx++; return null; }
+      const T = c.effort === 2 ? 2.9 : 4.6;
+      e = evBase("self", t0, 1.0, T, 7, 5); e.vol = c.effort === 2 ? 0.45 : 0.3; break;
+    }
+    case "vc":  e = evBase("vc", t0, 1.2, 4.0, 22, 5); break;
+    case "pc":  e = evBase("pc", t0, 1.4, 4.0, 18, 5); break;
+    case "ac":  e = evBase("vc", t0, 1.2, 3.5 + (n%3)*0.25, 22, 5); e.trigger = true; break;
+    case "dual": { const steps=[17,19,21,21,20,21,21,20]; e = evBase("pc", t0, 1.4, 4.0, steps[n%steps.length], 5); break; }
+    case "simv": {
+      if (n % 3 === 0) e = evBase("vc", t0, 1.2, 3.4, 22, 5);
+      else { e = evBase("ps", t0, 1.1, 3.4, 13, 5); e.vol = 0.55; }
+      break;
+    }
+    case "ps":  e = evBase("ps", t0, 1.1, 3.1 + (n%4)*0.3, 13, 5); e.vol = 0.8; break;
+    case "auto": { const T = 4.4 - Math.min(0.7, n*0.06); e = evBase("pc", t0, 1.3, T, 17 + (n%3), 5); break; }
+    case "autoplus": { const T = 4.4 - Math.min(0.7, n*0.06); e = evBase("pc", t0, 1.3, T, 17 + (n%3), 6 + (n%2)); break; }
+    case "proportional": e = evBase("prop", t0, 1.25, 3.0 + (n%4)*0.35, 12 + ((n*7)%5), 5); e.vol = 0.9; break;
+    case "aprv": e = evBase("aprv", t0, 4.9, 5.6, 24, 8); e.vol = 0.85; break;
+    case "niv_ps": e = evBase("ps", t0, 1.1, 3.3 + (n%3)*0.3, 12, 4); e.vol = 0.7; e.leak = true; break;
+    case "niv_auto": { const steps=[10,12,14,14,13,14]; e = evBase("ps", t0, 1.1, 3.4, steps[n%steps.length], 4); e.vol = 0.85; e.leak = true; break; }
+    default: sim.genT += 2; sim.breathIdx++; return null;
+  }
+  e.vol *= volScale;
+  sim.genT += e.T; sim.breathIdx++;
+  sim.breathStarts.push(t0);
+  return e;
+}
+function ensureEvents(){
+  while (sim.genT < sim.t + 12){
+    const e = genEvent();
+    if (e) sim.events.push(e);
+  }
+  sim.events = sim.events.filter(e => e.t0 + e.T > sim.t - 1);
+  sim.breathStarts = sim.breathStarts.filter(t => t > sim.t - 15);
+}
+function sampleWave(t){
+  ensureEvents();
+  let p = 5, f = 0;
+  const c = CASES[state.caseIdx];
+  if (sim.concept === "aprv" || (sim.events.length && sim.events[sim.events.length-1].kind === "aprv")) p = 8;
+  for (const e of sim.events){
+    const lt = t - e.t0;
+    if (lt < 0 || lt > e.T) {
+      if (lt >= -0.2 && lt < 0 && (e.trigger || e.kind === "ps" || e.kind === "prop" || e.kind === "self")) {
+        p = e.peep - 1.6 * Math.sin(Math.PI * (lt + 0.2) / 0.2); // トリガーの沈み
+      }
+      continue;
+    }
+    if (e.kind === "aprv"){
+      // 高圧を長く保ち、短く抜く。自発の小さい波が乗る
+      if (lt < e.Ti){ p = e.peakP; f = 0.12 * Math.sin(lt * 2.4) * Math.exp(-lt*0.15); }
+      else { const v = (lt - e.Ti) / (e.T - e.Ti); p = e.peep + (e.peakP - e.peep) * Math.pow(1 - v, 2); f = -2.6 * Math.exp(-3 * v) + 0.8 * Math.exp(-2*(1-v)) * (v>0.55?1:0); }
+      return {p, f: f * e.vol + 0.12 * Math.sin(lt*2.4) * 0.3};
+    }
+    if (lt < e.Ti){
+      const u = lt / e.Ti;
+      if (e.kind === "vc"){ f = (1 / e.Ti); p = e.peep + (e.peakP - e.peep) * (0.2 + 0.8 * Math.pow(u, 0.85)); }
+      else if (e.kind === "pc"){ f = (3 / (e.Ti * 0.95)) * Math.exp(-3 * u); p = e.peep + (e.peakP - e.peep) * Math.min(1, u * 5); }
+      else if (e.kind === "ps"){ f = (3 / (e.Ti * 0.95)) * Math.exp(-3 * u); p = e.peep + (e.peakP - e.peep) * Math.min(1, u * 6); }
+      else if (e.kind === "prop"){ const s = Math.pow(Math.sin(Math.PI * u), 1.2); f = s * 1.15 / e.Ti; p = e.peep + (e.peakP - e.peep) * s; }
+      else if (e.kind === "self"){ const s = Math.pow(Math.sin(Math.PI * u), 1.4); f = s * 1.1 / e.Ti; p = e.peep + 1.5 * s; }
+      f *= e.vol;
+    } else {
+      const v = (lt - e.Ti) / (e.T - e.Ti);
+      f = -(3.16 / (e.T - e.Ti)) * Math.exp(-3 * v) * e.vol;
+      p = e.peep + (e.kind === "vc" ? (e.peakP - e.peep) * Math.exp(-9 * (lt - e.Ti)) : 0);
+      if (e.leak) f += 0.16 * Math.sin(lt * 7) + 0.1; // マスクのリーク
+    }
+    return {p, f};
+  }
+  // ファイティング: 強い自発が機械と合わないときの余分な沈み
+  if (sim.fighting){
+    const ph = (t % 1.7) / 1.7;
+    if (ph < 0.18) p -= 2.4 * Math.sin(Math.PI * ph / 0.18);
+  }
+  if (sim.concept !== "none" && CASES[state.caseIdx].iface === "mask" && sim.tier === "bad") p = 4 + Math.sin(t*3)*0.4;
+  return {p, f};
+}
+/* 描画ループ */
+const canvas = document.getElementById("wave");
+const ctx = canvas.getContext("2d");
+let lastTs = null;
+function frame(ts){
+  if (!lastTs) lastTs = ts;
+  const dtReal = Math.min(0.05, (ts - lastTs) / 1000); lastTs = ts;
+  const dt = dtReal * sim.speed;
+  sim.t += dt;
+  const s = sampleWave(sim.t);
+  if (isFinite(s.f)) sim.vol = Math.max(0, Math.min(1.15, sim.vol + s.f * dt));
+  sim.samples.push({t: sim.t, p: s.p, f: s.f});
+  while (sim.samples.length && sim.samples[0].t < sim.t - 10) sim.samples.shift();
+  // SpO2の寄せ
+  const c = CASES[state.caseIdx];
+  let target = c.spo2Start;
+  if (sim.tier === "good") target = c.spo2Good;
+  else if (sim.tier === "near") target = Math.round((c.spo2Good + c.spo2Start) / 2);
+  else if (sim.tier === "bad") target = c.spo2Bad;
+  sim.spo2 += (target - sim.spo2) * Math.min(1, dt * 0.25);
+  drawWave();
+  updatePatient(s);
+  updateVitals();
+  requestAnimationFrame(frame);
+}
+function drawWave(){
+  const W = canvas.clientWidth, H = canvas.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== W * dpr){ canvas.width = W * dpr; canvas.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "#26373b"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 58); ctx.lineTo(W, 58); ctx.moveTo(0, 88); ctx.lineTo(W, 88); ctx.stroke();
+  const tEnd = sim.t, tStart = tEnd - 10;
+  const plot = (get, y0, scale, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.beginPath();
+    let started = false;
+    for (const sm of sim.samples){
+      const x = (sm.t - tStart) / 10 * W, y = y0 - get(sm) * scale;
+      if (!started){ ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+  plot(s => s.p - 5, 54, 1.55, "#ffd166");       // 圧（PEEP基準）
+  plot(s => s.f, 88, 26, "#6fd3e7");             // フロー
+}
+const patientMediaEl = () => document.getElementById("patientMedia");
+function updatePatient(){
+  const v = sim.vol;
+  const tr = `translateY(${(-v * 1.5).toFixed(2)}%) scale(1, ${(1 + v * 0.075).toFixed(3)})`;
+  document.querySelectorAll(".chest-patch").forEach(p => { p.style.transform = tr; });
+  const pm = patientMediaEl();
+  if (pm) pm.style.transform = sim.fighting ? `translateX(${(Math.sin(sim.t * 31) * 2).toFixed(1)}px)` : "";
+}
+let vitTick = 0;
+function updateVitals(){
+  if (++vitTick % 12) return;
+  const spo2El = document.getElementById("spo2");
+  const val = Math.round(sim.spo2 + Math.sin(sim.t * 0.7) * 0.4);
+  spo2El.innerHTML = val + "<small> %</small>";
+  spo2El.className = "vv " + (val >= 94 ? "ok" : val >= 89 ? "warn" : "bad");
+  const rr = sim.breathStarts.filter(t => t > sim.t - 12).length * 5;
+  document.getElementById("rr").innerHTML = (sim.tier === "bad" && CASES[state.caseIdx].effort === 0 && (sim.concept === "ps" || sim.concept === "proportional") ? 0 : rr) + "<small> /分</small>";
+  const syncEl = document.getElementById("sync");
+  if (sim.concept === "none") syncEl.textContent = "—";
+  else if (sim.fighting) syncEl.textContent = "合っていない";
+  else if (sim.tier === "good") syncEl.textContent = "合っている";
+  else if (sim.tier === "near") syncEl.textContent = "だいたい合っている";
+  else if (sim.tier === "bad") syncEl.textContent = "合っていない";
+}
+</script>
+<script>
+"use strict";
+/* ================= 状態と操作 ================= */
+const state = { maker: "draeger", caseIdx: 0, modeName: null, scoreOk: 0, scoreTry: 0, cleared: new Set() };
+const $ = id => document.getElementById(id);
+
+function casePlayable(makerKey, c){
+  const mk = MAKERS[makerKey];
+  if (c.iface === "ett" && mk.home === "niv") return false;
+  return mk.modes.some(m => c.accept.includes(m.concept) || c.near.includes(m.concept));
+}
+function renderMakers(){
+  $("makerList").innerHTML = Object.entries(MAKERS).map(([k, m]) =>
+    `<button class="maker ${k === state.maker ? "active" : ""}" data-maker="${k}">
+       <span class="mname">${m.name}</span><span class="mdev">${m.device}</span>
+     </button>`).join("");
+  document.querySelectorAll(".maker").forEach(b => b.addEventListener("click", () => selectMaker(b.dataset.maker)));
+}
+function renderCases(){
+  $("caseList").innerHTML = CASES.map((c, i) => {
+    const ok = casePlayable(state.maker, c);
+    return `<button class="case ${i === state.caseIdx ? "active" : ""} ${ok ? "" : "disabled"}" data-case="${i}" ${ok ? "" : "disabled"}>
+      <span class="cno">症例${c.id}</span> <span class="ctitle">${c.title}</span>
+      <span class="cmeta">${c.meta}</span>
+      ${ok ? "" : '<span class="unavail">このメーカーでは対応モードが確認できていません</span>'}
+    </button>`;
+  }).join("");
+  document.querySelectorAll(".case:not(.disabled)").forEach(b => b.addEventListener("click", () => selectCase(+b.dataset.case)));
+}
+function renderChips(){
+  const mk = MAKERS[state.maker];
+  $("curMaker").textContent = mk.name;
+  $("curDevice").textContent = mk.device;
+  $("makerNote").textContent = mk.note || "";
+  $("modeChips").innerHTML = mk.modes.map(m =>
+    `<button class="chip ${m.name === state.modeName ? "sel" : ""}" data-mode="${m.name}">${m.name}<span class="cpt">${CONCEPT_INFO[m.concept].label}</span></button>`).join("");
+  document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => selectMode(b.dataset.mode)));
+  updateDevicePanel();
+}
+function resetSim(){
+  sim.events = []; sim.genT = sim.t + 0.1; sim.breathIdx = 0; sim.breathStarts = [];
+  sim.vol = 0; sim.spo2 = CASES[state.caseIdx].spo2Start; sim.fighting = false;
+}
+function selectMaker(k){
+  state.maker = k; state.modeName = null; sim.concept = "none"; sim.tier = null;
+  if (!casePlayable(k, CASES[state.caseIdx])){
+    const idx = CASES.findIndex(c => casePlayable(k, c));
+    if (idx >= 0) state.caseIdx = idx;
+  }
+  resetSim(); renderMakers(); renderCases(); renderCaseHead(); renderChips(); renderDeep(); clearFeedback();
+}
+function selectCase(i){
+  state.caseIdx = i; state.modeName = null; sim.concept = "none"; sim.tier = null;
+  resetSim(); renderCases(); renderCaseHead(); renderChips(); renderDeep(); clearFeedback();
+}
+function renderCaseHead(){
+  const c = CASES[state.caseIdx];
+  $("caseTitle").textContent = `症例${c.id}：${c.title}`;
+  $("caseStory").textContent = `${c.meta} ― ${c.story}`;
+  const isMask = c.iface === "mask";
+  $("patientImgEtt").style.opacity = isMask ? "0" : "1";
+  $("patientImgMask").style.opacity = isMask ? "1" : "0";
+  $("chestPatchEtt").style.display = isMask ? "none" : "";
+  $("chestPatchMask").style.display = isMask ? "" : "none";
+  $("caseException").innerHTML = `<div class="exception">${c.exception}</div>`;
+  $("waveState").textContent = "モードを選ぶと波形が流れます（今は患者自身の呼吸）";
+}
+function clearFeedback(){
+  $("verdict").textContent = "モードを選んでください";
+  $("verdict").className = "verdict";
+  $("why").textContent = "選ぶと、波形と患者の反応がその場で変わります。合っているかどうかと理由もここに出ます。";
+  $("nextWrap").style.display = "none";
+}
+function selectMode(name){
+  const mk = MAKERS[state.maker];
+  const mode = mk.modes.find(m => m.name === name);
+  if (!mode) return;
+  state.modeName = name;
+  sim.concept = mode.concept;
+  const c = CASES[state.caseIdx];
+  let tier = "bad";
+  if (c.accept.includes(mode.concept)) tier = "good";
+  else if (c.near.includes(mode.concept)) tier = "near";
+  sim.tier = tier;
+  sim.fighting = (c.id === 3 && tier === "bad" && ["vc","pc","ac","dual","simv"].includes(mode.concept));
+  resetSimKeepSpo2();
+  state.scoreTry++;
+  const key = state.maker + "-" + c.id;
+  if (tier === "good" && !state.cleared.has(key)){ state.cleared.add(key); state.scoreOk++; }
+  $("scoreOk").textContent = state.scoreOk;
+  $("scoreTry").textContent = state.scoreTry;
+  renderChips(); renderFeedback(mode, tier); renderDeep();
+  $("waveState").textContent = `${mk.name}「${name}」で換気中`;
+}
+function resetSimKeepSpo2(){
+  sim.events = []; sim.genT = sim.t + 0.1; sim.breathIdx = 0; sim.breathStarts = []; sim.vol = 0;
+  sim.spo2 = CASES[state.caseIdx].spo2Start;
+}
+function renderFeedback(mode, tier){
+  const c = CASES[state.caseIdx];
+  const v = $("verdict"), w = $("why");
+  if (tier === "good"){
+    v.textContent = `合っています ― ${MAKERS[state.maker].name}では「${mode.name}」`;
+    v.className = "verdict good"; w.textContent = c.whyGood;
+    $("nextWrap").style.display = "";
+  } else if (tier === "near"){
+    v.textContent = `惜しい ― 「${mode.name}」では決め手が足りません`;
+    v.className = "verdict near"; w.textContent = c.whyNear;
+    $("nextWrap").style.display = "none";
+  } else {
+    v.textContent = `合っていません ― 「${mode.name}」`;
+    v.className = "verdict bad";
+    w.textContent = c.wrongBy[mode.concept] || c.wrongDefault;
+    $("nextWrap").style.display = "none";
+  }
+}
+function renderDeep(){
+  const mk = MAKERS[state.maker];
+  const mode = mk.modes.find(m => m.name === state.modeName);
+  const body = $("deepBody");
+  if (!mode){
+    body.innerHTML = `<p class="small">モードを選ぶと、そのモードが「何を決めて、何を患者に任せるか」と、メーカーごとの名前の対応がここに出ます。</p>`;
+  } else {
+    const info = CONCEPT_INFO[mode.concept];
+    const others = Object.entries(MAKERS)
+      .filter(([k]) => k !== state.maker)
+      .map(([k, m]) => { const f = m.modes.find(x => x.concept === mode.concept); return f ? `${m.name}では「${f.name}」` : null; })
+      .filter(Boolean);
+    body.innerHTML = `
+      <p><b>${mode.name}</b>（${info.label}）</p>
+      <p>${info.mech}</p>
+      ${others.length ? `<p class="small">同じ考え方のモードは、${others.join("、")}と名前が変わります。メーカーを切り替えて同じ症例で選んでみてください。</p>` : `<p class="small">この考え方のモードは、今回の調査では他のメーカーで確認できませんでした。</p>`}`;
+  }
+  // 対応表
+  const cur = mode ? mode.concept : null;
+  $("corrTable").innerHTML = `<table class="corr"><tr><th>考え方</th><th>名前の例</th></tr>` +
+    CORR_ROWS.map(r => {
+      const names = Object.keys(MAKERS).map(k => r.cells[k]).filter(Boolean).join(" ／ ");
+      return `<tr class="${r.concept === cur ? "hl" : ""}"><td>${r.label}</td><td>${names}</td></tr>`;
+    }).join("") + `</table>`;
+}
+$("nextCase").addEventListener("click", () => {
+  for (let step = 1; step <= CASES.length; step++){
+    const i = (state.caseIdx + step) % CASES.length;
+    if (casePlayable(state.maker, CASES[i])){ selectCase(i); break; }
+  }
+});
+document.querySelectorAll(".spd button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".spd button").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); sim.speed = parseFloat(b.dataset.speed);
+}));
+
+/* ================= 機器パネル（実機写真） =================
+   写真はメーカー公式サイト・公式資料から取得したもの。
+   取得できなかったメーカーは写真なしを明示する。 */
+const DEVICE_IMG = {
+  hamilton:{src:"assets/device_hamilton.png", note:"写真は HAMILTON-C3"},
+  draeger:{src:"assets/device_draeger.png", note:"写真は Savina 300（Evita の写真は取得できませんでした）"},
+  getinge:{src:"assets/device_getinge.jpg", note:"写真は SERVO-u の画面部分"},
+  medtronic:{src:"", note:"Puritan Bennett 980 の実機写真は、公式サイトから取得できませんでした"},
+  nihonkohden:{src:"assets/device_nihonkohden.png", note:"写真は NKV-550"},
+  philips:{src:"", note:"V60 の実機写真は、公式サイトから取得できませんでした"},
+  resmed:{src:"assets/device_resmed.png", note:"写真は Astral（在宅での使用シーンから切り出したもの）"}
+};
+function updateDevicePanel(){
+  const mk = MAKERS[state.maker], d = DEVICE_IMG[state.maker];
+  $("devMakerName").textContent = mk.name;
+  $("devDeviceName").textContent = mk.device;
+  $("devModeName").textContent = state.modeName || "未選択";
+  $("deviceNote").textContent = d.note;
+  const img = $("deviceImg"), none = $("deviceNoPhoto");
+  if (d.src){ img.src = d.src; img.style.display = ""; none.style.display = "none"; }
+  else { img.removeAttribute("src"); img.style.display = "none"; none.style.display = ""; }
+}
+/* 初期化 */
+renderMakers(); renderCases(); renderCaseHead(); renderChips(); renderDeep(); clearFeedback();
+resetSim();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
